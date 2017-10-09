@@ -38,22 +38,25 @@
   'todos-header-face
   "Face used to highlight headers in `todos'.")
 
-(defun todos-display-todos (prefix &optional suffix title)
+(defun todos-display-todos (prefix &optional suffix title grep-in-project
+                                   append-to)
   "Grep for strings situated between PREFIX and SUFFIX.
 If SUFFIX is nil, used the end of the line.
 TITLE is used to add a title to the results (default to 'todos').
-
-If the current buffer is part of a projectile project,
- grep in the whole project."
+if GREP-IN-PROJECT is non-nil, grep in the current projectile project.
+If APPEND-TO is non-nil, append the result to an already present
+grep buffer."
   (interactive)
   (let* ((current-prefix-arg '-)
-         (proj-name (or (if (fboundp 'projectile-project-name)
+         (proj-name (or (if (and (fboundp 'projectile-project-name)
+                                 grep-in-project)
                             (projectile-project-name))
                         (buffer-name)))
          (title (or title "todos"))
          (buff-grep-name (format "*[%s]%s*" proj-name title))
          (filename (file-name-nondirectory (buffer-file-name)))
          (nearest-match nil))
+    (message "filename: %s" filename)
     ;; save current buffer
     (save-buffer)
     ;; get nearest match
@@ -69,10 +72,12 @@ If the current buffer is part of a projectile project,
              (setq nearest-match (line-number-at-pos forpts)))
          (setq nearest-match (line-number-at-pos (or forpts bacpts))))))
      ;; grep
-    (if (and (fboundp 'projectile-project-p) (projectile-project-p)
+    (if (and grep-in-project
+             (fboundp 'projectile-project-p)
+             (projectile-project-p)
              (fboundp 'projectile-grep))
       (projectile-grep prefix '-)
-      (grep (format "grep --color -nH -e %s %s" prefix filename)))
+      (grep (format "grep -nH -e \"%s.*%s\" %s" prefix suffix filename)))
      (switch-to-buffer-other-window "*grep*")
      (while (not (search-backward "Grep finished" nil t))
        (sleep-for 0 100)
@@ -84,17 +89,10 @@ If the current buffer is part of a projectile project,
        (with-current-buffer "*grep*"
          (kill-buffer-and-window))
        (error "No matches found"))
-     ;; make sur "*grep*" buffer name is available
-     (when (get-buffer buff-grep-name)
-       (kill-buffer buff-grep-name))
-     (rename-buffer buff-grep-name)
      (let ((inhibit-read-only t))
        ;; remove useless lines
        (goto-char (point-min))
-       (kill-whole-line 4)
-       (insert (concat "\n" title "\n\n"))
-       (goto-char (point-max))
-       (kill-whole-line -2)
+       (delete-non-matching-lines "^[^:]+:[[:digit:]]+:.*$")
        ;; add face for header
        (font-lock-add-keywords nil
                                `((,(concat "^" title) . todos-header-face)))
@@ -118,15 +116,22 @@ If the current buffer is part of a projectile project,
              (replace-match (concat "\\2"
                                     (make-string (- max-length (length id)) 32)
                                     "\\1")
-                            nil nil)))
-         )
-       )
+                            nil nil))))
+     ;; copy result to adequat buffer
+     (switch-to-buffer buff-grep-name)
+       (when (not append-to)
+         (delete-region (point-min) (point-max)))
+       (goto-char (point-max))
+       (insert-buffer-substring "*grep*")
+       (kill-buffer "*grep*"))
      ;; remove visual line
+     (grep-mode)
      (visual-line-mode 0)
      (setq truncate-lines t)
      (goto-char (point-min))
-     (forward-line 3)
-     (when nearest-match
+     ;; go to nearest match if possible
+     (if (not nearest-match)
+         (forward-line 3)
        (message "grepfor: %s" (format "^%s:%s:" filename nearest-match))
        (search-forward-regexp (format "^%s:%s:" filename nearest-match) (point-max) t))
      (message "Finished grepping %s" (downcase title))))
