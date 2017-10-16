@@ -56,7 +56,6 @@ grep buffer."
          (buff-grep-name (format "*[%s]%s*" proj-name title))
          (filename (file-name-nondirectory (buffer-file-name)))
          (nearest-match nil))
-    (message "filename: %s" filename)
     ;; save current buffer
     (save-buffer)
     ;; get nearest match
@@ -85,14 +84,13 @@ grep buffer."
      ;; check if something was found
      (goto-char (point-min))
      (when (search-forward "no matches found" (point-max) t)
-       (message "point: %s" (point))
        (with-current-buffer "*grep*"
          (kill-buffer-and-window))
        (error "No matches found"))
      (let ((inhibit-read-only t))
        ;; remove useless lines
        (goto-char (point-min))
-       (delete-non-matching-lines "^[^:]+:[[:digit:]]+:.*$")
+       (keep-lines "^[^:\n]+?:[[:digit:]]+?:[^[:digit:]\n]+?[^\n]+$")
        ;; add face for header
        (font-lock-add-keywords nil
                                `((,(concat "^" title) . todos-header-face)))
@@ -111,7 +109,6 @@ grep buffer."
          (goto-char (point-min))
          (setq max-length (+ max-length 2))
          (while (re-search-forward regexp nil t)
-           (message "clean: %s SPC %s" (match-string 3) (match-string 2))
            (let ((id (match-string 2)))
              (replace-match (concat "\\2"
                                     (make-string (- max-length (length id)) 32)
@@ -132,7 +129,6 @@ grep buffer."
      ;; go to nearest match if possible
      (if (not nearest-match)
          (forward-line 3)
-       (message "grepfor: %s" (format "^%s:%s:" filename nearest-match))
        (search-forward-regexp (format "^%s:%s:" filename nearest-match) (point-max) t))
      (message "Finished grepping %s" (downcase title))))
 
